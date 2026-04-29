@@ -1,7 +1,7 @@
 from experience_replay import PrioritizedExperienceReplay
 import numpy as np
 from numpy import clip
-from numpy.random import rand, randint
+from numpy.random import rand, randint, default_rng
 from atari_preprocessing import ProcessedAtariEnv
 from deep_q_networks import DeepQNetwork
 import tensorflow as tf
@@ -53,7 +53,9 @@ class BaseQAgent:
                  target_network = None, 
                  frame_shape = (84, 84),
                  save_path = None, 
-                 logger = QLearningLogger):
+                 logger = QLearningLogger,
+                 episode_seed = 42,
+                 n_noop_actions = 30):
         
         self.env = env
         self.memory = memory
@@ -75,7 +77,10 @@ class BaseQAgent:
         self._q_values = []
         self._losses = []
         self._score = 0.0
-        
+
+        # Random starting position variables
+        self.episode_rng = np.random.default_rng(episode_seed)
+        self.n_noop_actions = n_noop_actions
         
     
     
@@ -119,6 +124,13 @@ class BaseQAgent:
         new_frame = self.env.reset()
         if not test:
             self.memory.add_experience(0, 0.0, new_frame, False)
+        # Skip random number of frames during training
+        if not test:
+            n_noops = self.episode_rng.integers(self.n_noop_actions - self.num_stacked_frames)
+            for i in range(n_noops):
+                new_frame, reward, done, _ = self.env.step(0)
+                self.memory.add_experience(0, reward, new_frame, done)
+        
         for i in range(self.num_stacked_frames):
             self._current_state[0, i] = new_frame
             new_frame, reward, done, _ = self.env.step(0)
@@ -212,7 +224,7 @@ class BaseQAgent:
         raw_frames = np.zeros(shape = (max_steps_per_episode, *self.env._unprocessed_frame.shape), dtype = np.uint8)
 
         episode_idx = 0
-        while episode_idx < num_episodes or self._step_counter < num_steps:
+        while (episode_idx < num_episodes or self._step_counter < num_steps):
             # reset environment and get first state
             self._start_episode()
             
