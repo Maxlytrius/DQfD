@@ -195,14 +195,17 @@ class BaseQAgent:
                 store_memory:          boolean; 
                                        whether to store the whole memory of the agent for later use (Attention: this file may be very large)
         """
-        
+        training_start = time.time()
         # prefill memory with random transitions if requested
         if warmup_steps is not None:
             self._random_warmup(warmup_steps)
         
         # pretrain the agent on its on own memory
+        start = time.time()
         if pretrain_steps is not None:
             self._pretrain(pretrain_steps, target_interval)
+        end = time.time()
+        print(f'Pretraining took: {end - start:.2f} seconds')
             
         # logging initialization
         self._score, self._q_values, self._losses = 0., [], []
@@ -273,6 +276,7 @@ class BaseQAgent:
                 #validation_score, validation_frames = 0, []
                 lower_idx = int(clip(episode_idx-(num_episodes/output_freq)+1, 0, num_episodes-1))
                 self.logger.show_progress(lower_idx, episode_idx, validation_score, validation_frames, self.policy_network.model)
+                print(f"Elapsed time: {time.time() - training_start:.2f} seconds")
                 
             if episode_idx%(num_episodes/save_freq)==0:
                 self.logger.make_plots()
