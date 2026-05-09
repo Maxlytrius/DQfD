@@ -1,89 +1,85 @@
+# ============================================================
+# COOPERATIVE MULTIPLE-INHERITANCE REFACTOR
+# ============================================================
+
 from experience_replay import PrioritizedExperienceReplay
 import numpy as np
 from numpy import clip
-from numpy.random import rand, randint, default_rng
+from numpy.random import rand, randint
 from atari_preprocessing import ProcessedAtariEnv
 from deep_q_networks import DeepQNetwork
 import tensorflow as tf
 from tensorflow import math
+
 argmax = math.argmax
+
 import time
-import os
 from log_training import QLearningLogger
 
+
+# ============================================================
+# BASE CLASS
+# ============================================================
+
 class BaseQAgent:
-    """
-    ******************
-    ** BaseQAgent **
-    ******************
 
-        Base class for logged training and testing of a deep Q-learning agent.
-        Methods for decision making and performing parameter updates will be defined in subclasses.
-        
-        -----------
-        Parameters:
-        -----------
-            env:            object; 
-                            OpenAI gym learning environment
+    def __init__(
+        self,
 
-            memory:         object; 
-                            an instance of PrioritizedExperienceReplay for storage and sampling of an agent's experiences
+        # shared/base parameters
+        env=None,
+        memory=None,
+        policy_network=None,
+        target_network=None,
+        frame_shape=(84, 84),
+        save_path=None,
+        logger=QLearningLogger,
+        episode_seed=42,
+        n_noop_actions=30,
 
-            policy_network: object;
-                            an instance of DeepQNetwork for parameter updates and decision making
+        # cooperative inheritance
+        **kwargs
+    ):
 
-            target_network: object;
-                            an instance of DeepQNetwork for the estimation of target values for parameter updates
+        super().__init__(**kwargs)
 
-            frame_shape:    tuple;
-                            the shape of one frame rendered by the environment
+        # avoid mutable default args
+        self.env = env if env is not None else ProcessedAtariEnv()
 
-            save_path:      string;
-                            the path in which the training logs will be stored
+        self.memory = (
+            memory
+            if memory is not None
+            else PrioritizedExperienceReplay()
+        )
 
-            logger:         object;
-                            an instance of QLearningLogger for detailed documentation of the learning progress
-
-    """
-    
-    def __init__(self,
-                 env = ProcessedAtariEnv(),
-                 memory = PrioritizedExperienceReplay(), 
-                 policy_network = None,
-                 target_network = None, 
-                 frame_shape = (84, 84),
-                 save_path = None, 
-                 logger = QLearningLogger,
-                 episode_seed = 42,
-                 n_noop_actions = 30):
-        
-        self.env = env
-        self.memory = memory
         self.policy_network = policy_network
         self.target_network = target_network
 
-        self.num_stacked_frames = memory.num_stacked_frames
-        
-        self.save_path = None
+        self.num_stacked_frames = self.memory.num_stacked_frames
+
+        self.save_path = save_path
+
         if save_path is not None:
-            self.save_path = save_path
-            self.logger = logger(self.save_path)
-        
+            self.logger = logger(save_path)
+
         # internal variables
-        self._current_state = np.zeros((1, self.num_stacked_frames, *frame_shape), dtype = np.uint8)
+        self._current_state = np.zeros(
+            (1, self.num_stacked_frames, *frame_shape),
+            dtype=np.uint8
+        )
+
         self._step_counter = 0
-        
+
         # logging variables
         self._q_values = []
         self._losses = []
         self._score = 0.0
 
-        # Random starting position variables
+        # random starting position variables
         self.episode_rng = np.random.default_rng(episode_seed)
+
         self.n_noop_actions = n_noop_actions
-        
-    
-    
+
     def _batch_update(self):
         pass
     
@@ -303,10 +299,7 @@ class BaseQAgent:
         self.logger.show_progress(0, num_episodes, summary = True)
         self.logger.make_plots()
         self.logger.save_all(self.policy_network.model, self.memory, store_memory)
-        
-        
-    
-    
+
     def test(self, record = False, eps = 0.001, max_steps_per_episode = 10000):
         """
             Test a deep Q-learning agent in one episode
@@ -353,37 +346,43 @@ class BaseQAgent:
             t += 1
            
         return(total_reward, frames)
-                    
-                    
-                    
+
+
+# ============================================================
+# DQN AGENT
+# ============================================================
+
 class DQNAgent(BaseQAgent):
-    
-    def __init__(self,
-                 env = ProcessedAtariEnv(),
-                 memory = PrioritizedExperienceReplay(), 
-                 policy_network = None,#DeepQNetwork(),
-                 target_network = None,#DeepQNetwork(),
-                 frame_shape = (84, 84),
-                 save_path = None,
-                 
-                 discount_factor = 0.99,
-                 n_step = None,
-                 double_q = False,
-                 expert_memory = None,
-                 prioritized_replay = False
-                 ):
-        
-        BaseQAgent.__init__(self, env, memory, policy_network, target_network, frame_shape, save_path)
-        
-        self._idx_range = np.arange(self.memory.batch_size, dtype = np.int32)
-        
+
+    def __init__(
+        self,
+
+        # DQN-specific
+        discount_factor=0.99,
+        n_step=None,
+        double_q=False,
+        expert_memory=None,
+        prioritized_replay=False,
+
+        **kwargs
+    ):
+
+        super().__init__(**kwargs)
+
         self.discount_factor = discount_factor
         self.n_step = n_step
-        self.expert_memory = expert_memory
         self.double_q = double_q
+
+        self.expert_memory = expert_memory
+
         self.prioritized_replay = prioritized_replay
-        
-                              
+
+        self._idx_range = np.arange(
+            self.memory.batch_size,
+            dtype=np.int32
+        )
+
+    # all existing DQN methods unchanged ...
     def _get_mini_batch(self, expert = False):
         if expert:
             memory = self.expert_memory
@@ -477,27 +476,31 @@ class DQNAgent(BaseQAgent):
           
     def _predict_current_q_values(self):
         self._current_predictions = self.policy_network.predict(self._current_state)[0]
-            
 
-            
-        
+
+# ============================================================
+# EPSILON GREEDY
+# ============================================================
+
 class EpsilonGreedyAgent(BaseQAgent):
-    
-    def __init__(self,
-                 env = ProcessedAtariEnv(),
-                 memory = PrioritizedExperienceReplay(), 
-                 policy_network = None,#DeepQNetwork(),
-                 target_network = None,#DeepQNetwork(),
-                 frame_shape = (84, 84),
-                 save_path = None,
-                 
-                 num_actions = 4,
-                 epsilon = 0.05):
-        
-        BaseQAgent.__init__(self, env, memory, policy_network, target_network, frame_shape, save_path)
-        self.epsilon = epsilon
+
+    def __init__(
+        self,
+
+        # epsilon-greedy specific
+        num_actions=4,
+        epsilon=0.05,
+
+        **kwargs
+    ):
+
+        super().__init__(**kwargs)
+
         self.num_actions = num_actions
-            
+        self.epsilon = epsilon
+
+    # existing methods unchanged ...
+
     
     def _make_decision(self):
         if rand() < self.epsilon:
@@ -506,31 +509,45 @@ class EpsilonGreedyAgent(BaseQAgent):
             self._predict_current_q_values()
             print(self._current_predictions)
             return(argmax(self._current_predictions, axis = 1))
-        
-        
-        
+
+
+# ============================================================
+# EPSILON ANNEALING
+# ============================================================
+
 class EpsilonAnnealingAgent(BaseQAgent):
-    
-    def __init__(self,
-                 env = ProcessedAtariEnv(),
-                 memory = PrioritizedExperienceReplay(), 
-                 policy_network = None,#DeepQNetwork(),
-                 target_network = None,#DeepQNetwork(),
-                 frame_shape = (84, 84),
-                 save_path = None,
-                 
-                 num_actions = 4,
-                 eps_schedule = [[1.0, 0.1, 1000000],
-                                 [0.1, 0.001, 5000000]]):
-        
-        BaseQAgent.__init__(self, env, memory, policy_network, target_network, frame_shape, save_path)
-        
+
+    def __init__(
+        self,
+
+        # epsilon annealing specific
+        num_actions=4,
+
+        eps_schedule=None,
+
+        **kwargs
+    ):
+
+        super().__init__(**kwargs)
+
+        if eps_schedule is None:
+            eps_schedule = [
+                [1.0, 0.1, 1000000],
+                [0.1, 0.001, 5000000]
+            ]
+
         self.eps_schedule = np.array(eps_schedule)
-        self.eps_schedule[:,2] = np.cumsum(self.eps_schedule[:,2])
+
+        self.eps_schedule[:, 2] = np.cumsum(
+            self.eps_schedule[:, 2]
+        )
+
         self.eps_lag = 0
+
         self.num_actions = num_actions
-        
-    
+
+    # existing methods unchanged ...
+
     def _get_current_epsilon(self):
         if self._step_counter > self.eps_schedule[0, 2] and self.eps_schedule.shape[0] > 1:
             self.eps_schedule = np.delete(self.eps_schedule, 0, 0)
@@ -552,53 +569,21 @@ class EpsilonAnnealingAgent(BaseQAgent):
             action = int(argmax(self._current_predictions))
             self._q_values.append(self._current_predictions[action])
             return(action)
-        
-        
-        
+
+
+# ============================================================
+# COMBINED AGENTS
+# ============================================================
+
 class EpsGreedyDQNAgent(EpsilonGreedyAgent, DQNAgent):
-    
-    def __init__(self,
-                 env = ProcessedAtariEnv(),
-                 memory = PrioritizedExperienceReplay(), 
-                 policy_network = None,#DeepQNetwork(),
-                 target_network = None, #DeepQNetwork(),
-                 frame_shape = (84, 84),
-                 save_path = None,
-                
-                 discount_factor = 0.99,
-                 n_step = None,
-                 double_q = False,
-                 expert_memory = None,
-                 prioritized_replay = False,
-                
-                 num_actions = 4,
-                 epsilon = 0.05):
-        
-        EpsilonGreedyAgent.__init__(self, env, memory, policy_network, target_network, frame_shape, save_path, num_actions, epsilon)
-        DQNAgent.__init__(self, env, memory, policy_network, target_network, frame_shape, save_path, discount_factor, n_step, double_q, expert_memory, prioritized_replay)
-        
-        
-        
+
+    def __init__(self, **kwargs):
+
+        super().__init__(**kwargs)
+
+
 class EpsAnnDQNAgent(EpsilonAnnealingAgent, DQNAgent):
-    
-    def __init__(self,
-                 env = ProcessedAtariEnv(),
-                 memory = PrioritizedExperienceReplay(), 
-                 policy_network = None, #DeepQNetwork(),
-                 target_network = None, #DeepQNetwork(),
-                 frame_shape = (84, 84),
-                 save_path = None,
-                
-                 discount_factor = 0.99,
-                 n_step = None,
-                 double_q = False,
-                 expert_memory = None,
-                 prioritized_replay = False,
-                
-                 num_actions = 4,
-                 eps_schedule = [[1.0, 0.1, 1000000],
-                                 [0.1, 0.001, 5000000]]
-                 ):
-        
-        EpsilonAnnealingAgent.__init__(self, env, memory, policy_network, target_network, frame_shape, save_path, num_actions, eps_schedule)
-        DQNAgent.__init__(self, env, memory, policy_network, target_network, frame_shape, save_path, discount_factor, n_step, double_q, expert_memory, prioritized_replay)
+
+    def __init__(self, **kwargs):
+
+        super().__init__(**kwargs)
