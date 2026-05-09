@@ -224,7 +224,8 @@ class BaseQAgent:
         raw_frames = np.zeros(shape = (max_steps_per_episode, *self.env._unprocessed_frame.shape), dtype = np.uint8)
 
         episode_idx = 0
-        while (episode_idx < num_episodes or self._step_counter < num_steps):
+        #while (episode_idx < num_episodes or self._step_counter < num_steps):
+        while (self._step_counter < num_steps):    
             # reset environment and get first state
             self._start_episode()
             

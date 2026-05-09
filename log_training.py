@@ -66,14 +66,14 @@ class QLearningLogger:
         
     
     def save_logging_data(self):
-        with open(self.save_path + "/logging_data/losses", 'wb') as file:
-            pickle.dump(self.losses, file)
+        #with open(self.save_path + "/logging_data/losses", 'wb') as file:
+        #    pickle.dump(self.losses, file)
             
-        with open(self.save_path + "/logging_data/q_values", 'wb') as file:
-            pickle.dump(self.q_values, file)
+        #with open(self.save_path + "/logging_data/q_values", 'wb') as file:
+        #    pickle.dump(self.q_values, file)
             
-        with open(self.save_path + "/logging_data/validation_scores", 'wb') as file:
-            pickle.dump(self.validation_scores, file)
+       # with open(self.save_path + "/logging_data/validation_scores", 'wb') as file:
+       #     pickle.dump(self.validation_scores, file)
             
         with open(self.save_path + "/logging_data/training_scores", 'wb') as file:
             pickle.dump(self.training_scores, file)
